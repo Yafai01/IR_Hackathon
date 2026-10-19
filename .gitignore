@@ -6,3 +6,7 @@ datasets/processed/
 checkpoints/
 *.pth
 *.pt
+__pycache__/
+*.pyc
+logs/
+.env
