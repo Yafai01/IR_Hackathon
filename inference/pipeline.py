@@ -98,7 +98,7 @@ class IRPipeline:
     def to_uint8(self, img):
         return (self.normalize(img) * 255).astype(np.uint8)
 
-    def save_result(self, rgb_tensor, output_path, sample_folder, brightness=1.0):
+    def save_result(self, sr_tensor, rgb_tensor, output_path, sample_folder, brightness=1.0):
         print("\n" + "=" * 60)
         print("Saving Prediction & Generating Outputs")
         print("=" * 60)
@@ -123,12 +123,23 @@ class IRPipeline:
             Image.fromarray(thermal_cmapped).save(out_dir / "thermal_input.png")
             print(f"✅ Saved : {out_dir / 'thermal_input.png'}")
             
-            # SR Output preview
-            sr = np.load(folder / "tir_100m.npy")
+            # SR Output preview (SRResNet prediction)
+            sr = self.tensor_to_numpy(sr_tensor)[:, :, 0]
             sr_uint8 = self.to_uint8(sr)
             sr_uint8 = cv2.cvtColor(sr_uint8, cv2.COLOR_GRAY2RGB)
+            sr_uint8 = cv2.resize(sr_uint8, (pred_uint8.shape[1], pred_uint8.shape[0]))
             Image.fromarray(sr_uint8).save(out_dir / "sr_output.png")
             print(f"✅ Saved : {out_dir / 'sr_output.png'}")
+
+            # Ground-truth 100 m TIR (reference for the SR output)
+            try:
+                tir_gt = np.load(folder / "tir_100m.npy")
+                tir_gt_uint8 = cv2.cvtColor(self.to_uint8(tir_gt), cv2.COLOR_GRAY2RGB)
+                tir_gt_uint8 = cv2.resize(tir_gt_uint8, (pred_uint8.shape[1], pred_uint8.shape[0]))
+                Image.fromarray(tir_gt_uint8).save(out_dir / "tir_ground_truth.png")
+                print(f"✅ Saved : {out_dir / 'tir_ground_truth.png'}")
+            except Exception:
+                tir_gt_uint8 = np.zeros_like(pred_uint8)
             
             # Ground Truth
             try:
@@ -142,14 +153,14 @@ class IRPipeline:
             
             # Comparison
             # Create a large image concatenating them horizontally
-            comparison = np.concatenate([thermal_cmapped, sr_uint8, pred_uint8, gt_uint8], axis=1)
+            comparison = np.concatenate([thermal_cmapped, sr_uint8, tir_gt_uint8, pred_uint8, gt_uint8], axis=1)
             comp_img = Image.fromarray(comparison)
             
             # Add labels if possible
             try:
                 from PIL import ImageDraw
                 draw = ImageDraw.Draw(comp_img)
-                labels = ["Thermal Input", "Super Resolution", "Predicted RGB", "Ground Truth"]
+                labels = ["Thermal Input", "Super Resolution", "Ground Truth TIR", "Predicted RGB", "Ground Truth RGB"]
                 w = pred_uint8.shape[1]
                 for i, label in enumerate(labels):
                     draw.text((i * w + 10, 10), label, fill=(255, 255, 255))
@@ -176,7 +187,7 @@ class IRPipeline:
         rgb = self.colorize(sr)
 
         print("Saving Result...")
-        self.save_result(rgb, output_image, sample_folder, brightness)
+        self.save_result(sr, rgb, output_image, sample_folder, brightness)
 
         print()
         print("=" * 60)
